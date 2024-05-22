@@ -1,0 +1,810 @@
+---
+title: "hy"
+author: "xh"
+date: "2023-12-26"
+output: html_document
+---
+
+```{r}
+#C_PP_AST
+library(pheatmap)
+library(dplyr)
+library(microbiomeMarker)
+library(RColorBrewer)
+library(gtable)
+library(grid)
+library(ggplot2)
+library(stringr)
+#
+order_taxa <- function(data,refseq)
+{
+  #order 用于将数据框data根据另一个数据框refseq中的Featureid进行排序
+  data_copy <- data
+
+  # 遍历 Taxa_pp_c_filter 的行
+  for (i in 1:nrow(data)) {
+   # 遍历 refseq_pp_c_filter 的行
+    for (j in 1:nrow(refseq)) {
+      # 检查 Feature.ID 和 x 是否匹配
+     if (data$Feature.ID[i] == refseq$x[j]) {
+       # 创建副本的相应行
+        data_copy[j, ] <- data[i, ]
+      }
+   }
+  }
+ return(data_copy)
+}
+
+renames <- function(x){
+  x_copy <- x
+  
+  # Rename duplicated entries in the "Taxon" column
+  indices <- which(duplicated(x_copy$Taxon) | duplicated(x_copy$Taxon, fromLast = TRUE))
+  for (index in indices) {
+    row_name <- rownames(x_copy)[index]
+    x_copy$Taxon[index] <- paste(x_copy$Taxon[index], row_name, sep = " --")
+  }
+  
+  # Return the modified copy
+  return(x_copy)
+}
+#road 
+res_pp_c <- import_qiime2('C:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/group-filtered-table.qza',taxa_qza = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/taxonomy.qza',
+                     sam_tab = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/clean_data/metadata.tsv')
+#calculate pp_c
+result_pp_c <- run_ancom(
+  res_pp_c,
+  group="group",
+  taxa_rank = "none",
+  p_adjust =  "BH",
+  pvalue_cutoff = 0.05
+)
+#提取差异id
+Asv_pp_c <-result_pp_c@marker_table
+
+Asv_pp_c <- Asv_pp_c[order(Asv_pp_c$enrich_group, -Asv_pp_c$W), ]
+
+#提取差异ASVs
+refseq_pp_c <- as.data.frame(res_pp_c@refseq)
+
+refseq_pp_c_filter <- refseq_pp_c[Asv_pp_c$feature,,drop = FALSE]
+
+#差异ASV对应taxa
+
+Taxa_pp_c_all <- read.table("c:/Users/16236/Downloads/metadata (2).tsv",header=T, sep="\t")
+
+Taxa_pp_c_filter <- Taxa_pp_c_all[Taxa_pp_c_all$Feature.ID %in%refseq_pp_c_filter$x,,drop = FALSE]
+
+#调整顺序并对行命名
+Taxa_pp_c_filter <- order_taxa(Taxa_pp_c_filter,refseq_pp_c_filter)
+rownames(Taxa_pp_c_filter) <- rownames(refseq_pp_c_filter)
+Taxa_pp_c_filter <- renames(Taxa_pp_c_filter)
+
+#提取相对丰度
+tss_pp_c <- normalize(res_pp_c, "TSS")
+
+Asv_pp_c_tss <- as.data.frame(tss_pp_c@otu_table)
+  
+marker_pp_c <- as.data.frame(tss_pp_c@otu_table[rownames(refseq_pp_c_filter)])
+
+marker_pp_c <- marker_pp_c[,order(colnames(marker_pp_c),decreasing = FALSE)]
+for (i in 1:nrow(marker_pp_c)) {
+  rownames(marker_pp_c)[i]<- Taxa_pp_c_filter[rownames(marker_pp_c)[i],"Taxon"]
+}
+
+pheatmap(
+  marker_pp_c,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  angle_col = 45,  
+  width = 10,height = 8
+)
+
+
+
+
+
+
+res_ast <- import_qiime2('C:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/filtered-table.qza',taxa_qza = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/taxonomy.qza',
+                     sam_tab = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/metadata_20230922.txt')
+#TSS标准化
+tss_res_ast <- normalize(res_ast, "TSS")
+
+refseq_pp_c_ast <- as.data.frame(tss_res_ast @refseq)
+
+#依据差异ASVs提取AST-PP-C组相应ASVs-id
+
+refseq_pp_c_ast_filter  <- subset(refseq_pp_c_ast, x %in% refseq_pp_c_filter$x)
+
+#提取ASVs对应taxanomy
+Taxa_pp_c_ast_filter <- Taxa_pp_c_all[Taxa_pp_c_all$Feature.ID %in% refseq_pp_c_ast_filter$x,,drop = FALSE]
+
+#调整顺序并对行命名
+Taxa_pp_c_ast_filter <- order_taxa(Taxa_pp_c_ast_filter,refseq_pp_c_ast_filter)
+rownames(Taxa_pp_c_ast_filter) <- rownames(refseq_pp_c_ast_filter)
+Taxa_pp_c_ast_filter <- renames(Taxa_pp_c_ast_filter)
+
+
+#提取相对丰度
+otu <- as.data.frame(tss_res_ast@otu_table)
+
+marker_pp_c_ast <- otu[rownames(refseq_pp_c_ast_filter),]
+
+marker_pp_c_ast <- marker_pp_c_ast[,order(colnames(marker_pp_c_ast),decreasing = FALSE)]
+
+for (i in 1:nrow(marker_pp_c_ast)) {
+  rownames(marker_pp_c_ast)[i]<- Taxa_pp_c_ast_filter[rownames(marker_pp_c_ast)[i],"Taxon"]
+}
+marker_pp_c_ast <- marker_pp_c_ast[rownames(marker_pp_c),]
+marker_pp_c_ast <- marker_pp_c_ast[,c(3:14,1:2)]
+pheatmap(
+  marker_pp_c_ast,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  angle_col = 45,  
+  width = 10,height = 8
+)
+
+
+```
+
+
+```{r}
+#C_PP and C_PP_FMT
+
+#提取差异ASV特征序列
+res_C_PP_FMT <- res <- import_qiime2('C:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/filtered-sample-table.qza',taxa_qza = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/taxonomy.qza',
+                     sam_tab = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/metadata_20231122.tsv')
+
+result_C_PP_FMT <- run_ancom(
+  res_C_PP_FMT,
+  group="group",
+  taxa_rank = "none",
+  p_adjust =  "BH",
+  pvalue_cutoff = 0.05
+)
+
+#提取ASVid
+Asv_pp_c_fmt <- result_C_PP_FMT@marker_table
+
+Asv_pp_c_fmt <- Asv_pp_c_fmt[order(Asv_pp_c_fmt$enrich_group, -Asv_pp_c_fmt$W), ]
+
+#TSS标准化
+
+tss_res_C_PP_FMT <- normalize(res_C_PP_FMT, "TSS")
+
+Asv_c_pp_fmt_tss <- as.data.frame(tss_res_C_PP_FMT@otu_table)
+
+refseq_res_C_PP_FMT <- as.data.frame(tss_res_C_PP_FMT@refseq)
+
+#提取差异ASVs
+
+refseq_res_C_PP_FMT_filter <- refseq_res_C_PP_FMT[Asv_pp_c_fmt$feature,,drop = FALSE]
+
+#差异ASV对应taxa
+
+Taxa_C_PP_FMT_all <- read.table("c:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/taxonomy.tsv",header=T, sep="\t")
+
+Taxa_C_PP_FMT_filter <- Taxa_C_PP_FMT_all[Taxa_C_PP_FMT_all$Feature.ID %in%refseq_res_C_PP_FMT_filter$x,,drop = FALSE]
+
+#调整顺序并对行命名
+Taxa_C_PP_FMT_filter <- order_taxa(Taxa_C_PP_FMT_filter,refseq_res_C_PP_FMT_filter)
+rownames(Taxa_C_PP_FMT_filter) <- rownames(refseq_res_C_PP_FMT_filter)
+Taxa_C_PP_FMT_filter <- renames(Taxa_C_PP_FMT_filter)
+
+#提取相对丰度
+marker_pp_c_fmt <- as.data.frame(tss_res_C_PP_FMT @otu_table[rownames(refseq_res_C_PP_FMT_filter)])
+
+marker_pp_c_fmt <- marker_pp_c_fmt[,order(colnames(marker_pp_c_fmt),decreasing = FALSE)]
+marker_pp_c_fmt <- marker_pp_c_fmt[,c(13:18, 1:12)]
+
+for (i in 1:nrow(marker_pp_c_fmt)) {
+  rownames(marker_pp_c_fmt)[i]<- Taxa_C_PP_FMT_filter[rownames(marker_pp_c_fmt)[i],"Taxon"]
+}
+
+p2 <- pheatmap(
+  marker_pp_c_fmt,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  angle_col = 45,  
+)
+
+
+
+
+
+
+
+
+#pp-c(no fmt)
+#ASVs 并集
+# Merge the data frames
+Asv_all <- union(refseq_pp_c_filter$x, refseq_res_C_PP_FMT_filter$x)
+
+
+#提取对应丰度表
+Asv_pp_c_tss$seq <- refseq_pp_c$x
+
+Asv_c_pp_fmt_tss$seq <- refseq_res_C_PP_FMT$x
+
+Asv_all_tss <- merge(Asv_c_pp_fmt_tss,Asv_pp_c_tss,"seq",all = TRUE)
+
+Asv_all_tss$taxa.x <- Taxa_pp_c_all$Taxon[match(Asv_all_tss$seq, Taxa_pp_c_all$Feature.ID)]
+Asv_all_tss$taxa.y <- Taxa_C_PP_FMT_all$Taxon[match(Asv_all_tss$seq, Taxa_C_PP_FMT_all$Feature.ID)]
+
+na_indices <- is.na(Asv_all_tss[, 33])
+Asv_all_tss[na_indices, 33] <- Asv_all_tss[na_indices, 32]
+
+na_indices <- is.na(Asv_all_tss[, 32])
+Asv_all_tss[na_indices, 32] <- Asv_all_tss[na_indices, 33]
+
+Asv_all_tss <- Asv_all_tss[,-33]
+colnames(Asv_all_tss)[32] <- "Taxon"
+
+Asv_all_tss$Asv_id <- rownames(Asv_all_tss)
+  
+new_taxa <- Asv_all_tss[,c(1,32,33)]
+
+
+#提取差异ASVs
+Asv_all_tss_filter <- subset(Asv_all_tss,seq %in% Asv_all)
+
+Asv_all_tss_filter[is.na(Asv_all_tss_filter)] <- 0
+
+rownames(Asv_all_tss_filter) <- Asv_all_tss_filter$Asv_id
+
+Asv_all_tss_filter <-renames(Asv_all_tss_filter)
+
+rownames(Asv_all_tss_filter) <- Asv_all_tss_filter$Taxon
+
+Asv_all_tss_filter <- Asv_all_tss_filter[match(Asv_all,Asv_all_tss_filter$seq),]
+
+
+marker_all <- Asv_all_tss_filter[,c(2:31)]
+
+marker_all <- marker_all[,order(colnames(marker_all))]
+
+marker_all <- marker_all[,c(19:30,13:18,1:12)]
+ 
+annotation_col_cpp <-  data.frame(Group = factor(rep(c("C", "PP"), each = 6)))
+rownames(annotation_col_cpp) = colnames(marker_pp_c_asv)
+annotation_col_fmt <- data.frame(Group = factor(rep(c("C-FMT", "10uMPP-FMT","15uMPP-FMT"), each = 6)))
+annotation_col_fmt$Group <- factor(annotation_col_fmt$Group, levels = c("C-FMT", "10uMPP-FMT", "15uMPP-FMT"))
+rownames(annotation_col_fmt) = colnames(marker_pp_c_fmt_asv)
+annotation_all <- merge(annotation_col_cpp,annotation_col_fmt,all =T,sort = F)
+rownames(annotation_all) <- c(rownames(annotation_col_cpp),rownames(annotation_col_fmt))
+
+
+# 创建 pheatmap 图，并使用上面生成的标签和断点
+p4 <- pheatmap(
+  marker_all,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  angle_col = 45,  
+  width = 10, height = 8,
+  annotation_col = annotation_all,
+)
+
+#readjust p1 name
+new_taxa_pp_c <- subset(new_taxa,seq %in% refseq_pp_c_filter$x)
+
+
+  
+marker_pp_c <- as.data.frame(tss_pp_c@otu_table[rownames(refseq_pp_c_filter)])
+
+marker_pp_c$seq <- refseq_pp_c_filter$x
+marker_pp_c$Taxon <- new_taxa_pp_c$Taxon[match(marker_pp_c$seq,new_taxa_pp_c$seq)]
+marker_pp_c$Asv_id <-new_taxa_pp_c$Asv_id[match(marker_pp_c$seq,new_taxa_pp_c$seq)]
+rownames(marker_pp_c) <- marker_pp_c$Asv_id
+marker_pp_c <- renames(marker_pp_c)
+rownames(marker_pp_c) <- marker_pp_c$Taxon
+
+marker_pp_c_asv <- marker_pp_c[,1:12]
+marker_pp_c_asv <- marker_pp_c[,order(colnames(marker_pp_c_asv),decreasing = FALSE)]
+
+taxa <- rownames(marker_pp_c_asv)
+taxa <- gsub("k__Bacteria; ", "", taxa)
+
+# 设置原始字符串
+original_string <- taxa
+# 将原始字符串按分号分割
+split_strings <- str_split(original_string, "; ")
+split_strings
+
+
+max_stringlen <- 0
+for (i in 1:length(split_strings)) {
+  if (length(split_strings[[i]]) > max_stringlen) {
+    max_stringlen <- length(split_strings[[i]])
+  }
+}
+max_stringlen
+
+for (i  in 1:(max_stringlen)) {
+  temp_str <- c()
+    for (j in 1:length(split_strings)) {
+      if ( is.na(split_strings[[j]][i])) {
+        split_strings[[j]][i] <- " "
+      }
+       temp_str <- append(temp_str,split_strings[[j]][i])
+    }
+  max_length <- max(nchar(temp_str))
+  for (j in 1:length(split_strings)) {
+    if ( !is.na(split_strings[[j]][i])) {
+       split_strings[[j]][i] <- str_pad(split_strings[[j]][i], width = max_length, side = "right")
+    }
+     
+    }
+}
+split_strings <- sapply(split_strings, function(x) paste(x, collapse = "; "))
+split_strings 
+
+rownames(marker_pp_c_asv) <- split_strings
+
+#rejust ylabs
+# Modified pheatmap:::heatmap_motor
+heatmap_motor <- function (matrix, border_color, cellwidth, cellheight, tree_col, 
+                           tree_row, treeheight_col, treeheight_row, filename, width, 
+                           height, breaks, color, legend, annotation_row, annotation_col, 
+                           annotation_colors, annotation_legend, annotation_names_row, 
+                           annotation_names_col, main, fontsize, fontsize_row, fontsize_col, 
+                           hjust_col, vjust_col, angle_col, fmat, fontsize_number, number_color, 
+                           gaps_col, gaps_row, labels_row, labels_col, ...) 
+{
+  lo = pheatmap:::lo(coln = labels_col, rown = labels_row, nrow = nrow(matrix), 
+                     ncol = ncol(matrix), cellwidth = cellwidth, cellheight = cellheight, 
+                     treeheight_col = treeheight_col, treeheight_row = treeheight_row, 
+                     legend = legend, annotation_col = annotation_col, annotation_row = annotation_row, 
+                     annotation_colors = annotation_colors, annotation_legend = annotation_legend, 
+                     annotation_names_row = annotation_names_row, annotation_names_col = annotation_names_col, 
+                     main = main, fontsize = fontsize, fontsize_row = fontsize_row, 
+                     fontsize_col = fontsize_col, angle_col = angle_col, gaps_row = gaps_row, 
+                     gaps_col = gaps_col, ...)
+  res = lo$gt
+  mindim = lo$mindim
+  if (!is.na(filename)) {
+    if (is.na(height)) {
+      height = convertHeight(gtable_height(res), "inches", valueOnly = T)
+    }
+    if (is.na(width)) {
+      width = convertWidth(gtable_width(res), "inches", valueOnly = T)
+    }
+    r = regexpr("\\.[a-zA-Z]*$", filename)
+    if (r == -1) 
+      stop("Improper filename")
+    ending = substr(filename, r + 1, r + attr(r, "match.length"))
+    f = switch(ending, pdf = function(x, ...) pdf(x, ...), 
+               png = function(x, ...) png(x, units = "in", res = 300, 
+                                          ...), jpeg = function(x, ...) jpeg(x, units = "in", 
+                                                                             res = 300, ...), jpg = function(x, ...) jpeg(x, 
+                                                                                                                          units = "in", res = 300, ...), tiff = function(x, 
+                                                                                                                                                                         ...) tiff(x, units = "in", res = 300, compression = "lzw", 
+                                                                                                                                                                                   ...), bmp = function(x, ...) bmp(x, units = "in", 
+                                                                                                                                                                                                                    res = 300, ...), stop("File type should be: pdf, png, bmp, jpg, tiff"))
+    f(filename, height = height, width = width)
+    gt = heatmap_motor(matrix, cellwidth = cellwidth, cellheight = cellheight, 
+                       border_color = border_color, tree_col = tree_col, 
+                       tree_row = tree_row, treeheight_col = treeheight_col, 
+                       treeheight_row = treeheight_row, breaks = breaks, 
+                       color = color, legend = legend, annotation_col = annotation_col, 
+                       annotation_row = annotation_row, annotation_colors = annotation_colors, 
+                       annotation_legend = annotation_legend, annotation_names_row = annotation_names_row, 
+                       annotation_names_col = annotation_names_col, filename = NA, 
+                       main = main, fontsize = fontsize, fontsize_row = fontsize_row, 
+                       fontsize_col = fontsize_col, hjust_col = hjust_col, 
+                       vjust_col = vjust_col, angle_col = angle_col, fmat = fmat, 
+                       fontsize_number = fontsize_number, number_color = number_color, 
+                       labels_row = labels_row, labels_col = labels_col, 
+                       gaps_col = gaps_col, gaps_row = gaps_row, ...)
+    grid.draw(gt)
+    dev.off()
+    return(gt)
+  }
+  if (mindim < 3) 
+    border_color = NA
+  if (!is.na(main)) {
+    elem = pheatmap:::draw_main(main, fontsize = 1.3 * fontsize, ...)
+    res = gtable_add_grob(res, elem, t = 1, l = 3, name = "main", 
+                          clip = "off")
+  }
+  if (!pheatmap:::is.na2(tree_col) & treeheight_col != 0) {
+    elem = pheatmap:::draw_dendrogram(tree_col, gaps_col, horizontal = T)
+    res = gtable_add_grob(res, elem, t = 2, l = 3, name = "col_tree")
+  }
+  if (!pheatmap:::is.na2(tree_row) & treeheight_row != 0) {
+    elem = pheatmap:::draw_dendrogram(tree_row, gaps_row, horizontal = F)
+    res = gtable_add_grob(res, elem, t = 4, l = 1, name = "row_tree")
+  }
+  elem = pheatmap:::draw_matrix(matrix, border_color, gaps_row, gaps_col, 
+                                fmat, fontsize_number, number_color)
+  res = gtable_add_grob(res, elem, t = 4, l = 3, clip = "off", 
+                        name = "matrix")
+  if (length(labels_col) != 0) {
+    pars = list(labels_col, gaps = gaps_col, fontsize = fontsize_col, 
+                hjust_col = hjust_col, vjust_col = vjust_col, angle_col = angle_col, 
+                ...)
+    elem = do.call(pheatmap:::draw_colnames, pars)
+    res = gtable_add_grob(res, elem, t = 5, l = 3, clip = "off", 
+                          name = "col_names")
+  }
+  if (length(labels_row) != 0) {
+    pars = list(labels_row, gaps = gaps_row, fontsize = fontsize_row, 
+                ...)
+    elem = do.call(pheatmap:::draw_rownames, pars)
+    res = gtable_add_grob(res, elem, t = 4, l = 3, clip = "off", 
+                          name = "row_names")
+  }
+  if (!pheatmap:::is.na2(annotation_col)) {
+    converted_annotation = convert_annotations(annotation_col, 
+                                               annotation_colors)
+    elem = pheatmap:::draw_annotations(converted_annotation, border_color, 
+                                       gaps_col, fontsize, horizontal = T)
+    res = gtable_add_grob(res, elem, t = 3, l = 3, clip = "off", 
+                          name = "col_annotation")
+    if (annotation_names_col) {
+      elem = pheatmap:::draw_annotation_names(annotation_col, fontsize, 
+                                              horizontal = T)
+      res = gtable_add_grob(res, elem, t = 3, l = 4, clip = "off", 
+                            name = "col_annotation_names")
+    }
+  }
+  if (!pheatmap:::is.na2(annotation_row)) {
+    converted_annotation = convert_annotations(annotation_row, 
+                                               annotation_colors)
+    elem = pheatmap:::draw_annotations(converted_annotation, border_color, 
+                                       gaps_row, fontsize, horizontal = F)
+    res = gtable_add_grob(res, elem, t = 4, l = 2, clip = "off", 
+                          name = "row_annotation")
+    if (annotation_names_row) {
+      elem = pheatmap:::draw_annotation_names(annotation_row, fontsize, 
+                                              horizontal = F, hjust_col = hjust_col, vjust_col = vjust_col, 
+                                              angle_col = angle_col)
+      res = gtable_add_grob(res, elem, t = 5, l = 2, clip = "off", 
+                            name = "row_annotation_names")
+    }
+  }
+  annotation = c(annotation_col[length(annotation_col):1], 
+                 annotation_row[length(annotation_row):1])
+  annotation = annotation[unlist(lapply(annotation, function(x) !pheatmap:::is.na2(x)))]
+  if (length(annotation) > 0 & annotation_legend) {
+    elem = pheatmap:::draw_annotation_legend(annotation, annotation_colors, 
+                                             border_color, fontsize = fontsize, ...)
+    t = ifelse(is.null(labels_row), 4, 3)
+    res = gtable_add_grob(res, elem, t = t, l = 6, b = 5, 
+                          clip = "off", name = "annotation_legend")
+  }
+  if (!pheatmap:::is.na2(legend)) {
+    elem = pheatmap:::draw_legend(color, breaks, legend, fontsize = fontsize, 
+                                  ...)
+    t = ifelse(is.null(labels_row), 4, 3)
+    res = gtable_add_grob(res, elem, t = t, l = 5, b = 5, 
+                          clip = "off", name = "legend")
+  }
+  return(res)
+}
+
+# Modified pheatmap:::lo    
+lo <- function (rown, coln, nrow, ncol, cellheight = NA, cellwidth = NA, 
+                treeheight_col, treeheight_row, legend, annotation_row, annotation_col, 
+                annotation_colors, annotation_legend, annotation_names_row, 
+                annotation_names_col, main, fontsize, fontsize_row, fontsize_col, 
+                angle_col, gaps_row, gaps_col, ...) 
+{
+  if (!is.null(coln[1]) | (!pheatmap:::is.na2(annotation_row) & annotation_names_row)) {
+    if (!is.null(coln[1])) {
+      t = coln
+    }
+    else {
+      t = ""
+    }
+    tw = strwidth(t, units = "in", cex = fontsize_col/fontsize)
+    if (annotation_names_row) {
+      t = c(t, colnames(annotation_row))
+      tw = c(tw, strwidth(colnames(annotation_row), units = "in"))
+    }
+    longest_coln = which.max(tw)
+    gp = list(fontsize = ifelse(longest_coln <= length(coln), 
+                                fontsize_col, fontsize), ...)
+    coln_height = unit(1, "grobheight", textGrob(t[longest_coln], 
+                                                 rot = angle_col, gp = do.call(gpar, gp))) + unit(10, 
+                                                                                                  "bigpts")
+  }
+  else {
+    coln_height = unit(5, "bigpts")
+  }
+  if (!is.null(rown[1])) {
+    t = rown
+    tw = strwidth(t, units = "in", cex = fontsize_row/fontsize)
+    if (annotation_names_col) {
+      t = c(t, colnames(annotation_col))
+      tw = c(tw, strwidth(colnames(annotation_col), units = "in"))
+    }
+    longest_rown = which.max(tw)
+    gp = list(fontsize = ifelse(longest_rown <= length(rown), 
+                                fontsize_row, fontsize), ...)
+    rown_width = unit(1, "grobwidth", textGrob(t[longest_rown], 
+                                               rot = 0, gp = do.call(gpar, gp))) + unit(10, "bigpts")
+  }
+  else {
+    rown_width = unit(5, "bigpts")
+  }
+  gp = list(fontsize = fontsize, ...)
+  if (!pheatmap:::is.na2(legend)) {
+    longest_break = which.max(nchar(names(legend)))
+    longest_break = unit(1.1, "grobwidth", 
+                         textGrob(as.character(names(legend))[longest_break], 
+                                  gp = do.call(gpar, gp)))
+    title_length = unit(1.1, "grobwidth", textGrob("Scale", 
+                                                   gp = gpar(fontface = "bold", ...)))
+    legend_width = unit(12, "bigpts") + longest_break * 1.2
+    legend_width = max(title_length, legend_width)
+  }
+  else {
+    legend_width = unit(0, "bigpts")
+  }
+  if (is.na(main)) {
+    main_height = unit(0, "npc")
+  }
+  else {
+    main_height = unit(1.5, "grobheight", textGrob(main, 
+                                                   gp = gpar(fontsize = 1.3 * fontsize, ...)))
+  }
+  textheight = unit(fontsize, "bigpts")
+  if (!pheatmap:::is.na2(annotation_col)) {
+    annot_col_height = ncol(annotation_col) * (textheight + 
+                                                 unit(2, "bigpts")) + unit(2, "bigpts")
+    t = c(as.vector(as.matrix(annotation_col)), colnames(annotation_col))
+    annot_col_legend_width = unit(1.2, "grobwidth", textGrob(t[which.max(nchar(t))], 
+                                                             gp = gpar(...))) + unit(12, "bigpts")
+    if (!annotation_legend) {
+      annot_col_legend_width = unit(0, "npc")
+    }
+  }
+  else {
+    annot_col_height = unit(0, "bigpts")
+    annot_col_legend_width = unit(0, "bigpts")
+  }
+  if (!pheatmap:::is.na2(annotation_row)) {
+    annot_row_width = ncol(annotation_row) * (textheight + 
+                                                unit(2, "bigpts")) + unit(2, "bigpts")
+    t = c(as.vector(as.matrix(annotation_row)), colnames(annotation_row))
+    annot_row_legend_width = unit(1.2, "grobwidth", textGrob(t[which.max(nchar(t))], 
+                                                             gp = gpar(...))) + unit(12, "bigpts")
+    if (!annotation_legend) {
+      annot_row_legend_width = unit(0, "npc")
+    }
+  }
+  else {
+    annot_row_width = unit(0, "bigpts")
+    annot_row_legend_width = unit(0, "bigpts")
+  }
+  annot_legend_width = max(annot_row_legend_width, annot_col_legend_width)
+  treeheight_col = unit(treeheight_col, "bigpts") + unit(5, 
+                                                         "bigpts")
+  treeheight_row = unit(treeheight_row, "bigpts") + unit(5, 
+                                                         "bigpts")
+  if (is.na(cellwidth)) {
+    mat_width = unit(1, "npc") - rown_width - legend_width - 
+      treeheight_row - annot_row_width - annot_legend_width
+  }
+  else {
+    mat_width = unit(cellwidth * ncol, "bigpts") + length(gaps_col) * 
+      unit(4, "bigpts")
+  }
+  if (is.na(cellheight)) {
+    mat_height = unit(1, "npc") - main_height - coln_height - 
+      treeheight_col - annot_col_height
+  }
+  else {
+    mat_height = unit(cellheight * nrow, "bigpts") + length(gaps_row) * 
+      unit(4, "bigpts")
+  }
+  gt = gtable(widths = unit.c(treeheight_row, rown_width,  
+                              mat_width, treeheight_row, legend_width, annot_legend_width), 
+              heights = unit.c(main_height, treeheight_col, annot_col_height, 
+                               mat_height, coln_height), vp = viewport(gp = do.call(gpar, 
+                                                                                    gp)))
+  cw = convertWidth(mat_width - (length(gaps_col) * unit(4, 
+                                                         "bigpts")), "bigpts", valueOnly = T)/ncol
+  ch = convertHeight(mat_height - (length(gaps_row) * unit(4, 
+                                                           "bigpts")), "bigpts", valueOnly = T)/nrow
+  mindim = min(cw, ch)
+  res = list(gt = gt, mindim = mindim)
+  return(res)
+}
+
+# Modified pheatmap:::draw_rownames      
+draw_rownames <- function (rown, gaps, ...) 
+{
+  coord = pheatmap:::find_coordinates(length(rown), gaps)
+  y = unit(1, "npc") - (coord$coord - 0.5 * coord$size)
+  res = textGrob(rown, x = unit(-3, "bigpts"), y = y, vjust = 0.5, 
+                 hjust = 1, gp = gpar(...))
+  return(res)
+}
+
+assignInNamespace(x="draw_rownames", value=draw_rownames, ns="pheatmap")
+assignInNamespace(x="lo", value=lo, ns="pheatmap")
+assignInNamespace(x="heatmap_motor", value=heatmap_motor, ns="pheatmap") 
+
+
+
+
+windowsFonts(
+  Consolas = windowsFont("Consolas")
+)
+
+p1 <- pheatmap(
+  marker_pp_c_asv,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  angle_col = 45,  
+  width = 10,height = 8,
+  fontsize=15,
+  ylab = "left"
+)
+pp <- p1$gtable
+pp$grobs[[2]]$label
+
+pp$grobs[[2]]$gp = grid::gpar(fontsize=15 ,fontfamily = "Consolas")
+pp$grobs[[3]]$gp = grid::gpar(fontsize=15 ,fontfamily = "Consolas")
+plot(pp)
+
+
+#p2
+rownames(marker_pp_c_ast) <- rownames(marker_pp_c)
+
+
+p2 <- pheatmap(
+  marker_pp_c_ast,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  angle_col = 45,  
+  width = 10,height = 8,
+  font.family = "Arial"
+)
+
+
+#p3
+new_taxa_pp_c_fmt<- subset(new_taxa,seq %in% refseq_res_C_PP_FMT_filter$x)
+
+marker_pp_c_fmt <- as.data.frame(tss_res_C_PP_FMT@otu_table[rownames(refseq_res_C_PP_FMT_filter),])
+
+marker_pp_c_fmt$seq <- refseq_res_C_PP_FMT_filter$x
+
+marker_pp_c_fmt$Taxon <- new_taxa_pp_c_fmt$Taxon[match(marker_pp_c_fmt$seq,new_taxa_pp_c_fmt$seq)]
+marker_pp_c_fmt$Asv_id <-new_taxa_pp_c_fmt$Asv_id[match(marker_pp_c_fmt$seq,new_taxa_pp_c_fmt$seq)]
+
+rownames(marker_pp_c_fmt) <- marker_pp_c_fmt$Asv_id
+
+marker_pp_c_fmt <- renames(marker_pp_c_fmt)
+rownames(marker_pp_c_fmt) <- marker_pp_c_fmt$Taxon
+
+marker_pp_c_fmt_asv <- marker_pp_c_fmt[,c(1:18)]
+
+marker_pp_c_fmt_asv <- marker_pp_c_fmt_asv[,order(colnames(marker_pp_c_fmt_asv),decreasing = FALSE)]
+marker_pp_c_fmt_asv <- marker_pp_c_fmt_asv[,c(13:18, 1:12)]
+
+taxa <- rownames(marker_pp_c_fmt_asv)
+taxa <- gsub("k__Bacteria; ", "", taxa)
+
+# 设置原始字符串
+original_string <- taxa
+# 将原始字符串按分号分割
+split_strings <- str_split(original_string, "; ")
+split_strings
+
+max_stringlen <- 0
+for (i in 1:length(split_strings)) {
+  if (length(split_strings[[i]]) > max_stringlen) {
+    max_stringlen <- length(split_strings[[i]])
+  }
+}
+max_stringlen
+
+for (i  in 1:(max_stringlen)) {
+  temp_str <- c()
+    for (j in 1:length(split_strings)) {
+      if ( is.na(split_strings[[j]][i])) {
+        split_strings[[j]][i] <- " "
+      }
+       temp_str <- append(temp_str,split_strings[[j]][i])
+    }
+  max_length <- max(nchar(temp_str))
+  for (j in 1:length(split_strings)) {
+    if ( !is.na(split_strings[[j]][i])) {
+       split_strings[[j]][i] <- str_pad(split_strings[[j]][i], width = max_length, side = "right")
+    }
+     
+    }
+}
+
+split_strings 
+split_strings <- sapply(split_strings, function(x) paste(x, collapse = "; "))
+split_strings 
+
+
+rownames(marker_pp_c_fmt_asv) <- split_strings
+p3 <- pheatmap(
+  marker_pp_c_fmt_asv,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = F,
+  angle_col = 45,  
+  width = 10,height = 8,
+  fontsize=15,
+)
+pp <- p3$gtable
+pp$grobs[[2]]$label
+pp$grobs[[2]]$gp = grid::gpar(fontsize=12 ,fontfamily = "Consolas")
+pp$grobs[[3]]$label
+pp$grobs[[3]]$gp = grid::gpar(fontsize=12 ,fontfamily = "Consolas")
+plot(pp)
+#p4
+
+taxa <- rownames(marker_all)
+taxa <- gsub("k__Bacteria; ", "", taxa)
+
+# 设置原始字符串
+original_string <- taxa
+# 将原始字符串按分号分割
+split_strings <- str_split(original_string, "; ")
+split_strings
+
+max_stringlen <- 0
+for (i in 1:length(split_strings)) {
+  if (length(split_strings[[i]]) > max_stringlen) {
+    max_stringlen <- length(split_strings[[i]])
+  }
+}
+max_stringlen
+
+for (i  in 1:(max_stringlen)) {
+  temp_str <- c()
+    for (j in 1:length(split_strings)) {
+      if ( is.na(split_strings[[j]][i])) {
+        split_strings[[j]][i] <- " "
+      }
+       temp_str <- append(temp_str,split_strings[[j]][i])
+    }
+  max_length <- max(nchar(temp_str))
+  for (j in 1:length(split_strings)) {
+    if ( !is.na(split_strings[[j]][i])) {
+       split_strings[[j]][i] <- str_pad(split_strings[[j]][i], width = max_length, side = "right")
+    }
+     
+    }
+}
+split_strings 
+split_strings <- sapply(split_strings, function(x) paste(x, collapse = "; "))
+split_strings 
+
+
+rownames(marker_all) <- split_strings
+
+p4 <- pheatmap(
+  marker_all,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  angle_col = 45,  
+  width = 10, height = 8,
+  fontsize=15
+)
+pp <- p4$gtable
+pp$grobs[[3]]$label
+pp$grobs[[3]]$gp = grid::gpar(fontsize=12 ,fontfamily = "Consolas")
+pp$grobs[[2]]$gp = grid::gpar(fontsize=12 ,fontfamily = "Consolas")
+plot(pp)
+
+png("heatmap.png", width = 15, height = 8, units = 'in', res = 300)
+plot(pp)
+dev.off()
+
+```

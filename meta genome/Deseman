@@ -1,0 +1,3 @@
+module load miniconda/4.9.2
+source activate
+conda activate metasoft

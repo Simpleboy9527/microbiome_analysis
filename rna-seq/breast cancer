@@ -1,0 +1,242 @@
+##rna-seq 
+
+#pre-assembly quanlity control and filtering
+
+for i in /backup/projects/breast_cancer/xinxiang/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/[0-9]*
+do
+    fastp -w 12 \
+        -i /backup/projects/breast_cancer/xinxiang/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/${i}/${i}.1.fq.gz \
+        -I /backup/projects/breast_cancer/xinxiang/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/${i}/${i}.2.fq.gz \
+        -o /backup/projects/breast_cancer/xinxiang/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/clean_data/${i}.1.fq.gz \
+        -O /backup/projects/breast_cancer/xinxiang/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/clean_data/${i}.2.fq.gz \
+        -A \
+        -h /backup/projects/breast_cancer/xinxiang/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/fastqc_result/${i}.html \
+        -R ${i} fastp report
+done
+
+
+#subread-align
+
+#test
+for file in 1001TR; do
+nohup subread-align -t 0 -i /home/xuhuan/cancer_2024_1_26/rna-seq/database/ncbi_dataset/data/GCF_000001405.40/my_index \
+                  -r /beegfs/xuhuan/breast_cancer/RNA-seq/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/78TR/78TR.1.fq.gz \
+                  -R /beegfs/xuhuan/breast_cancer/RNA-seq/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/78TR/78TR.2.fq.gz \
+                  -o /beegfs/xuhuan/breast_cancer/RNA-seq/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/result_mapping/78TR_result.bam \
+                  -T 14 &
+
+done
+
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --mem=20G 
+#SBATCH --cpus-per-task=28
+#SBATCH -p cu
+#SBATCH -o /home/xuhuan/sbatch_result/jupyterlab-%j.stdout
+#SBATCH -e /home/xuhuan/sbatch_result/jupyterlab-%j.stderr
+#SBATCH -w cu02
+
+for i in `head -n 80 /beegfs/xuhuan/breast_cancer/RNA-seq/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/sample.txt`; do
+    subread-align -t 0 -i /home/xuhuan/cancer_2024_1_26/rna-seq/database/ncbi_dataset/data/GCF_000001405.40/my_index \
+                  -r /beegfs/xuhuan/breast_cancer/RNA-seq/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/${i}/${i}.1.fq.gz \
+                  -R /beegfs/xuhuan/breast_cancer/RNA-seq/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/${i}/${i}.2.fq.gz \
+                  -o /beegfs/xuhuan/breast_cancer/RNA-seq/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/result_mapping/${i}_result.bam \
+                  -T 14
+
+done
+
+
+#-t 0 rna-seq    1  dna-seq
+
+
+
+#feature-count
+featureCounts -a /home/xuhuan/cancer_2024_1_26/rna-seq/database/ncbi_dataset/data/GCF_000001405.40/*gtf \
+            -p --countReadPairs \
+              -F \
+              -t  \
+              -g gene_id \
+              -T 14 \
+              -o /beegfs/xuhuan/breast_cancer/RNA-seq/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/counts.txt \
+              /beegfs/xuhuan/breast_cancer/RNA-seq/cp_to_xinxiang_zhongshanzhongliu_BRCA_RNA_meta/result_mapping/*bam
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#metagenome
+module load miniconda/4.9.2
+source activate
+conda activate mpa4
+
+#bam -> fastq
+
+time bedtools bamtofastq -i 10163.bqsr.bam.bf4.bam -fq 10163.fastq
+
+real    0m21.147s
+user    0m5.877s
+sys     0m7.811s
+
+
+
+
+
+
+
+
+#humaan 运行时间过长
+for i in *bam;do
+    file=$(basename ${i})|sed 's/\..*//'
+    bedtools bamtofastq -i ${i} -fq ${file}.fastq
+    humann  -i ${file}.fastq \
+    -o /home/xuhuan/metagenome/breast_cancer/result/ \
+    --threads 10 \
+    --taxonomic-profile ${file}_taxonomic_profile.tsv \
+    --nucleotide-database /home/xuhuan/metagenome/humann_database/chocophlan/ \
+    --protein-database  /home/xuhuan/metagenome/humann_database/uniref/ \
+    --output-format biom \
+    --output-basename ${file}
+done
+
+
+#metaphlan
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --mem=20G 
+#SBATCH --cpus-per-task=30
+#SBATCH -p cu
+#SBATCH -o /home/xuhuan/sbatch_result/jupyterlab-%j.stdout
+#SBATCH -e /home/xuhuan/sbatch_result/jupyterlab-%j.stderr
+#SBATCH --exclude=cu01
+
+module load miniconda/4.9.2
+source activate
+conda activate mpa4
+
+for i in $(head -n 30 /home/xuhuan/metagenome/breast_cancer/extract_bam/sample.txt); do
+    # Loop through BAM files in the directory
+    for j in /home/xuhuan/metagenome/breast_cancer/extract_bam/${i}/*bam; do
+        # Extract the file name without extension
+        file=$(basename ${j} | sed 's/\..*//')
+        # Convert BAM to FASTQ
+        bedtools bamtofastq -i ${j} -fq /home/xuhuan/metagenome/breast_cancer/extract_bam/${i}/${file}.fastq
+        # Run metaphlan
+        metaphlan /home/xuhuan/metagenome/breast_cancer/extract_bam/${i}/${file}.fastq \
+            --nproc 30 \
+            --input_type fastq \
+            -o /home/xuhuan/metagenome/breast_cancer/result_mpa4/${file}.tsv \
+            --bowtie2db /home/software/anaconda3/envs/mpa4/lib/python3.10/site-packages/metaphlan/metaphlan_databases/ \
+            --index mpa_vJan21_CHOCOPhlAnSGB_202103 \
+            --bowtie2out /home/xuhuan/metagenome/breast_cancer/result_mpa4/${file}.bz2
+    done
+done
+
+
+
+
+
+#metaphlan 结果不行；换Kraken2
+for i in $(head -n 30 /home/xuhuan/metagenome/breast_cancer/extract_bam/sample.txt); do
+    # Loop through BAM files in the directory
+    for j in /home/xuhuan/metagenome/breast_cancer/extract_bam/${i}/*bam; do
+        file=$(basename ${j} | sed 's/\..*//')
+        kraken2 --db /home/xuhuan/software/kraken2/database/maxikraken2_1903_140GB/ \
+            /home/xuhuan/metagenome/breast_cancer/extract_bam/${i}/${file}.fastq \
+            --output /home/xuhuan/metagenome/breast_cancer/kraken2_result/${i}.txt \
+            --report /home/xuhuan/metagenome/breast_cancer/kraken2_result/${i}_report.txt \
+            --report-zero-counts \
+            --threads 12
+    done
+done
+
+
+#
+#bam -> fastq
+
+
+
+
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH --mem 200G 
+#SBATCH -n 28
+#SBATCH -p cu
+#SBATCH -o /home/xuhuan/sbatch_result/kranken%A_%a.stdout
+#SBATCH -e /home/xuhuan/sbatch_result/kranken%A_%a.stderr
+#SBATCH --array=1-378%2
+#SBATCH --exclude=cu01,cu05
+
+# 获取当前任务索引
+task_id=$SLURM_ARRAY_TASK_ID
+
+# 从sample.txt中读取第task_id行作为输入文件名
+input_file=$(awk -v line="$task_id" 'NR == line {print $2}' sample.txt)
+
+# 构建输出文件名
+output_file=$(awk -v line="$task_id" 'NR == line {print $1}' sample.txt)
+
+echo "Starting blast analysis for task $task_id (input: $input_file, output: $output_file)"
+
+kraken2 --db /beegfs/xuhuan/database/kraken_database/Standard_database/ \
+  ${input_file}\
+  --output /beegfs/xuhuan/breast_cancer/metagenome/rawdata/kraken2_result_default/${output_file}.txt \
+  --report /beegfs/xuhuan/breast_cancer/metagenome/rawdata/kraken2_result_default/${output_file}_report.txt \
+  --report-zero-counts \
+  --use-names \
+  --threads 28 \
+
+bracken -d /beegfs/xuhuan/database/kraken_database/Standard_database/ -i /beegfs/xuhuan/breast_cancer/metagenome/rawdata/kraken2_result_default/${output_file}_report.txt -o /beegfs/xuhuan/breast_cancer/metagenome/rawdata/kraken2_result_default/${output_file}.bracken -r 100 -l 'S' -t 10
+
+
+
+
+#species-level
+#提取微生物序列
+module load miniconda/4.9.2
+source activate
+conda activate mpa4
+
+# 获取当前任务索引
+task_id=$SLURM_ARRAY_TASK_ID
+
+# 从sample.txt中读取第task_id行作为输入文件名
+input_file=$(awk -v line="$task_id" 'NR == line {print $1}' sample.txt)
+
+# 构建输出文件名
+output_file=$(awk -v line="$task_id" 'NR == line {print $1}' sample.txt)
+
+#bracken exclude human
+filter_bracken.out.py -i /beegfs/xuhuan/breast_cancer/metagenome/rawdata/kraken2_result_default/${input_file}.bracken -o /beegfs/xuhuan/breast_cancer/metagenome/rawdata/exclude_human_data/${input_file}_filtered.bracken --exclude 9606
+
+#提取微生物序列
+extract_kraken_reads.py -k /beegfs/xuhuan/breast_cancer/metagenome/rawdata/kraken2_result_default/${input_file}.txt -s /beegfs/xuhuan/breast_cancer/metagenome/rawdata/${input_file} -r /beegfs/xuhuan/breast_cancer/metagenome/rawdata/kraken2_result_default/${input_file}_report.txt --taxid 9606 --exclude --fastq-output -o /beegfs/xuhuan/breast_cancer/metagenome/rawdata/exclude_human_data/${input_file}
+
+
+#合并bracken结果
+
+
+
+sample=$(basename ${i} | cut -d'_' -f1)     
+taxa_id=$(awk 'NR>1 && $1 != 1 {print $16}' ${i} | grep -E '^[0-9]+$' | sort -u | tr "\n" " ")          
+extract_kraken_reads.py -k ../kraken2_result_exclude9606/${sample}.txt \
+    -s1 ../${sample}.R1.fq \
+    -s2 ../${sample}.R2.fq \
+    -o ../pathseq_filtered/${sample}_1.fq \
+    -o2 ../pathseq_filtered/${sample}_2.fq \
+    -t $taxa_id
+
+
+
+
+

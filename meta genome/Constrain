@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH --mem=20G 
+#SBATCH --cpus-per-task=28
+#SBATCH -p cu
+#SBATCH -o /home/xuhuan/sbatch_result/jupyterlab-%j.stdout
+#SBATCH -e /home/xuhuan/sbatch_result/jupyterlab-%j.stderr
+#SBATCH -w cu03
+
+module load miniconda/4.9.2
+source activate
+conda activate constrain
+cd  /beegfs/xuhuan/Strain
+
+for f in /beegfs/xuhuan/Strain/raw_data/*_1.fastq
+do
+    bn=$(basename "${f}" | cut -d '_' -f 1)
+    fastp -w 12 \
+        -i raw_data/${bn}_1.fastq \
+        -I raw_data/${bn}_2.fastq \
+        -o clean_data/${bn}_1.fastq \
+        -O clean_data/${bn}_2.fastq \
+        -A \
+        -h fastqc_result/${bn}.html \
+        -R ${bn} fastp report
+
+    /home/xuhuan/software/MetaPhlAn-2.8/metaphlan2.py \
+    clean_data/${bn}_1.fastq,clean_data/${bn}_2.fastq \
+    --input_type fastq \
+    -o clean_data/${bn}_results.rel_ab.txt \
+    --bt2_ps very-sensitive \
+    --bowtie2out clean_data/${bn}.bowtie2.bz2 \
+    --nproc 20
+
+    fq1=${bn}_1.fastq
+    fq2=${bn}_2.fastq
+    echo "//" >> file_info.txt
+    echo "sample: ${bn}" >> file_info.txt
+    echo "fq1: $(realpath clean_data/${fq1})" >> file_info.txt
+    echo "fq2: $(realpath clean_data/${fq2})" >> file_info.txt
+    echo "metaphlan2: $(realpath clean_data/${bn}_results.rel_ab.txt)" >>file_info.txt
+done
+
+
+/home/xuhuan/software/Python-2.7.12/python /home/xuhuan/metagenome/Constrain/constrains/ConStrains.py \
+ -c /beegfs/xuhuan/Strain/file_info.txt \
+ -o /beegfs/xuhuan/Strain/Constrain/ \
+ -t 8  \
+ --bowtie2=/home/xuhuan/software/bowtie2-2.5.2/bowtie2 \
+ --bowtie2_build=/home/xuhuan/software/bowtie2-2.5.2/bowtie2-build \
+ -m /home/xuhuan/software/MetaPhlAn-2.8/metaphlan2.py 
+
+
+

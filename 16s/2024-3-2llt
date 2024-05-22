@@ -1,0 +1,193 @@
+wget -i link.txt
+find . -maxdepth 1 -type f -exec bash -c 'mv "$1" "${1%%\?*}"' _ {} \;
+
+#单端数据
+module load miniconda/4.9.2
+source activate
+conda activate qiime2-2022.2
+
+for i in /home/xuhuan/qiime-analysis/liuliting/2024-3-2/00.cleandata/*.fastq.gz; do
+    fastp -i "$i" -o /home/xuhuan/qiime-analysis/liuliting/2024-3-2/cleandata/"$(basename "$i" .effective.fastq.gz)".fastq
+done
+
+#manifest
+echo -e sample-id'\t'absolute-filepath > manifest
+for i in ./cleandata/*fastq; do path=$(readlink -f $i); id=$(basename $i | cut -d '.' -f 1); echo -e $id'\t'$path >>manifest;done
+
+#import data 
+qiime tools import \
+  --type 'SampleData[SequencesWithQuality]' \
+  --input-path manifest \
+  --output-path single-end-demux.qza \
+  --input-format SingleEndFastqManifestPhred33V2 
+
+# demux-view
+qiime demux summarize \
+  --i-data single-end-demux.qza \
+  --o-visualization demux.qzv
+
+#deblur
+qiime quality-filter q-score \
+  --i-demux single-end-demux.qza \
+  --o-filtered-sequences demux-filtered.qza \
+  --o-filter-stats demux-filter-stats.qza
+
+qiime metadata tabulate \
+  --m-input-file demux-filter-stats.qza \
+  --o-visualization demux-filter-stats.qzv
+
+qiime demux summarize \
+  --i-data demux-filtered.qza \
+  --o-visualization demux-filtered.qzv
+
+qiime deblur denoise-16S \
+  --i-demultiplexed-seqs demux-filtered.qza \
+  --p-trim-length 180 \
+  --p-jobs-to-start 16 \
+  --p-no-hashed-feature-ids \
+  --o-representative-sequences rep-seqs-deblur.qza \
+  --o-table table-deblur.qza \
+  --p-sample-stats \
+  --o-stats deblur-stats.qza
+
+qiime deblur visualize-stats \
+  --i-deblur-stats deblur-stats.qza \
+  --o-visualization deblur-stats.qzv
+
+mv rep-seqs-deblur.qza rep-seqs.qza
+
+mv table-deblur.qza table.qza
+
+#FeatureTable and FeatureData summaries
+qiime feature-table summarize \
+--i-table table.qza \
+--o-visualization table.qzv
+
+qiime feature-table tabulate-seqs \
+ --i-data rep-seqs.qza \
+ --o-visualization rep-seqs.qzv
+
+#Generate a tree for phylogenetic diversity analyses
+qiime phylogeny align-to-tree-mafft-fasttree \
+  --i-sequences rep-seqs.qza \
+  --p-n-threads 28 \
+  --o-alignment aligned-rep-seqs.qza \
+  --o-masked-alignment masked-aligned-rep-seqs.qza \
+  --o-tree unrooted-tree.qza \
+  --o-rooted-tree rooted-tree.qza
+
+#Alpha and beta diversity analysis
+qiime diversity alpha-rarefaction \
+  --i-table table.qza \
+  --i-phylogeny rooted-tree.qza \
+  --p-steps 15 \
+  --p-max-depth 90000 \
+  --o-visualization alpha-rarefaction-90000.qzv
+
+qiime diversity core-metrics-phylogenetic \
+  --i-phylogeny rooted-tree.qza \
+  --i-table table.qza \
+  --p-sampling-depth 74846 \
+  --m-metadata-file metadata* \
+  --output-dir core-metrics-results
+#显著分析
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/faith_pd_vector.qza \
+  --m-metadata-file metadata*\
+  --o-visualization core-metrics-results/faith-pd-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/evenness_vector.qza \
+  --m-metadata-file metadata* \
+  --o-visualization core-metrics-results/evenness-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/observed_features_vector.qza \
+  --m-metadata-file metadata* \
+  --o-visualization core-metrics-results/observed-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/shannon_vector.qza \
+  --m-metadata-file metadata* \
+  --o-visualization core-metrics-results/shannon-group-significance.qzv
+
+qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results/unweighted_unifrac_distance_matrix.qza \
+  --m-metadata-file metadata* \
+  --m-metadata-column group \
+  --o-visualization core-metrics-results/unweighted-unifrac-group-significance.qzv \
+  --p-pairwise
+
+qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results/weighted_unifrac_distance_matrix.qza \
+  --m-metadata-file metadata* \
+  --m-metadata-column group \
+  --o-visualization core-metrics-results/weighted-unifrac-group-significance.qzv \
+  --p-pairwise
+
+qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results/bray_curtis_distance_matrix.qza \
+  --m-metadata-file metadata* \
+  --m-metadata-column group \
+  --o-visualization core-metrics-results/bray_curtis-group-significance.qzv \
+  --p-pairwise
+
+qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results/jaccard_distance_matrix.qza \
+  --m-metadata-file metadata* \
+  --m-metadata-column group \
+  --o-visualization core-metrics-results/jaccard_distance-group-significance.qzv \
+  --p-pairwise
+
+
+
+#taxonomy
+qiime feature-classifier classify-sklearn \
+  --i-classifier /beegfs/songying/2022_QUCHI/gg-13-8-99-nb-classifier.qza \
+  --i-reads rep-seqs.qza \
+  --p-n-jobs 28 \
+  --o-classification taxonomy.qza
+
+qiime metadata tabulate \
+  --m-input-file taxonomy.qza \
+  --o-visualization taxonomy.qzv
+
+qiime taxa barplot \
+  --i-table table.qza \
+  --i-taxonomy taxonomy.qza \
+  --m-metadata-file metadata* \
+  --o-visualization taxa-bar-plots.qzv
+
+qiime feature-table rarefy \
+ --i-table table.qza \
+ --p-sampling-depth 74846\
+ --o-rarefied-table raref-table.qza
+
+
+#去掉异常样本
+qiime feature-table filter-samples \
+  --i-table raref-table.qza \
+  --m-metadata-file filtered_sample.tsv \
+  --o-filtered-table id-filtered-table.qza
+#alpha_diversity
+qiime diversity core-metrics-phylogenetic \
+  --i-phylogeny rooted-tree.qza \
+  --i-table id-filtered-table.qza \
+  --p-sampling-depth 74846 \
+  --m-metadata-file metadata* \
+  --output-dir core-metrics-results
+#
+qiime vsearch cluster-features-closed-reference \
+  --i-table id-filtered-table.qza \
+  --i-sequences rep-seqs-filter.qza \
+  --i-reference-sequences /home/xuhuan/qiime-analysis/reference-databases/bugbase/99_otus.qza \
+  --p-perc-identity 0.99 \
+  --o-clustered-table table-cr-99.qza \
+  --o-clustered-sequences rep-seqs-cr-99.qza \
+  --o-unmatched-sequences unmatched-cr-99.qza
+
+
+
+
+
+  

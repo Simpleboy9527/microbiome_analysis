@@ -1,0 +1,78 @@
+
+python panphlan-master/panphlan_download_pangenome.py -i Eubacterium_rectale  #下载失败
+
+python panphlan-master/panphlan_map.py -i samples_fastq/CCMD34381688ST-21-0.fastq \
+                         --tmp ./ \                    #指定临时文件存储位置
+                         --indexes Eubacterium_rectale/Eubacterium_rectale \  #下载的botwie索引位置
+                         -p Eubacterium_rectale/Eubacterium_rectale_pangenome.tsv \ #从ChocoPhlAn导出的pangenome tsv文件路径
+                         -o map_results/CCMD34381688ST-21-0_erectale.tsv \  #结果输出
+                         -v                                  #显示过程信息
+
+for f in /home/xuhuan/metagenome/PanPhlAn/panphlan_tutorial/samples_fastq/*; do
+
+    fname=$(basename $f)
+    python panphlan-master/panphlan_map.py \
+        -i /home/xuhuan/metagenome/PanPhlAn/panphlan_tutorial/samples_fastq/${fname} \
+         --tmp /home/xuhuan/metagenome/PanPhlAn/panphlan_tutorial/ \
+        --indexes /home/xuhuan/metagenome/PanPhlAn/panphlan_tutorial/Eubacterium_rectale/Eubacterium_rectale \
+        -p /home/xuhuan/metagenome/PanPhlAn/panphlan_tutorial/Eubacterium_rectale/Eubacterium_rectale_pangenome.tsv \
+        -o /home/xuhuan/metagenome/PanPhlAn/panphlan_tutorial/map_results/${fname%.*}_erectale.tsv ;
+
+done; 
+
+
+python panphlan-master/panphlan_profiling.py -i map_results/ \
+                               --o_matrix result_profile_erectale.tsv \
+                               -p Eubacterium_rectale/Eubacterium_rectale_pangenome.tsv \
+                               --add_ref \
+                               --o_covplot erectale_covplot
+
+
+#panphlan pipline 说明
+panphlan_download_pangenome.py -i Eubacterium_rectale  #下载对应的泛基因组，下载超过 3,000 个物种的泛基因组文件（重叠群的 fasta 文件、BowTie2 索引和一般信息）
+
+
+
+panphlan_map.py [-h] -i INPUT --indexes INDEXES -p PANGENOME -o OUTPUT [--tmp TMP] [--bt2 BT2] [-b OUT_BAM] [--nproc NPROC] [--min_read_length MIN_READ_LENGTH] [--th_mismatches TH_MISMATCHES]
+                       [-m SAM_MEMORY] [--fasta] [-v]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --tmp TMP             Location used for tmp files
+  --bt2 BT2             Additional bowtie2 mapping options, separated by slash: /-D/20/-R/3/, default: -bt2 /--very-sensitive/
+  -b OUT_BAM, --out_bam OUT_BAM
+                        Get BAM output file
+  --nproc NPROC         Maximum number of processors to use. Default is 12 or a lower number of available processors.
+  --min_read_length MIN_READ_LENGTH
+                        Minimum read length, default 70
+  --th_mismatches TH_MISMATCHES
+                        Number of mismatches to filter (bam)
+  -m SAM_MEMORY, --sam_memory SAM_MEMORY
+                        Maximum amount of memory for Samtools (in Gb). Default 4
+  --fasta               Read are fasta format. By default considered as fastq
+  -v, --verbose         Show progress information
+
+required arguments:
+  -i INPUT, --input INPUT
+                        Metagenomic sample to map
+  --indexes INDEXES     Bowtie2 indexes path and file prefix
+  -p PANGENOME, --pangenome PANGENOME
+                        Path to pangenome tsv file exported from ChocoPhlAn
+  -o OUTPUT, --output OUTPUT
+                        Path to output file
+
+
+
+
+
+PanPhlAn 配置文件阈值
+应变检测阈值
+根据样品覆盖深度和预期的物种丰度，可以选择菌株存在/不存在检测的不同灵敏度阈值。这包括应变最小覆盖范围和可接受的应变丰度曲线形状的设置。
+ --min_coverage 5 --left_max 1.18 --right_min 0.82 （非常严格）
+ --min_coverage 2 --left_max 1.25 --right_min 0.75 （默认）
+ --min_coverage 1 --left_max 1.70 --right_min 0.30 （非常敏感）
+
+基因家族检测阈值
+对于可以检测到菌株的所有样本，我们根据归一化覆盖曲线上的阈值定义基因家族的存在和不存在：
+--th_present 0.5
+所有大于 0.5 的基因家族被视为存在 (1)，低于 0.5 的基因家族被视为不存在 (0 ）。

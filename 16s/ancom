@@ -1,0 +1,479 @@
+---
+title: "hy"
+author: "xh"
+date: "2023-12-26"
+output: html_document
+---
+
+```{r}
+#C_PP_AST
+library(dplyr)
+library(microbiomeMarker)
+library(RColorBrewer)
+library(gtable)
+library(grid)
+library(ggplot2)
+library(stringr)
+library(ComplexHeatmap)
+library(extrafont)
+#
+order_taxa <- function(data,refseq)
+{
+  #order 用于将数据框data根据另一个数据框refseq中的Featureid进行排序
+  data_copy <- data
+
+  # 遍历 Taxa_pp_c_filter 的行
+  for (i in 1:nrow(data)) {
+   # 遍历 refseq_pp_c_filter 的行
+    for (j in 1:nrow(refseq)) {
+      # 检查 Feature.ID 和 x 是否匹配
+     if (data$Feature.ID[i] == refseq$x[j]) {
+       # 创建副本的相应行
+        data_copy[j, ] <- data[i, ]
+      }
+   }
+  }
+ return(data_copy)
+}
+
+renames <- function(x){
+  x_copy <- x
+  return(x_copy)
+}
+#road 
+res_pp_c <- import_qiime2('C:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/group-filtered-table.qza',taxa_qza = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/taxonomy.qza',
+                     sam_tab = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/clean_data/metadata.tsv')
+#calculate pp_c
+result_pp_c <- run_ancom(
+  res_pp_c,
+  group="group",
+  taxa_rank = "none",
+  p_adjust =  "BH",
+  pvalue_cutoff = 0.05,
+  
+)
+#提取差异id
+Asv_pp_c <-result_pp_c@marker_table
+
+Asv_pp_c <- Asv_pp_c[order(Asv_pp_c$enrich_group, -Asv_pp_c$ef_CLR_diff_mean), ]
+
+#提取差异ASVs
+refseq_pp_c <- as.data.frame(res_pp_c@refseq)
+
+refseq_pp_c_filter <- refseq_pp_c[Asv_pp_c$feature,,drop = FALSE]
+
+#差异ASV对应taxa
+
+Taxa_pp_c_all <- read.table("c:/Users/16236/Downloads/metadata (2).tsv",header=T, sep="\t")
+
+Taxa_pp_c_filter <- Taxa_pp_c_all[Taxa_pp_c_all$Feature.ID %in%refseq_pp_c_filter$x,,drop = FALSE]
+
+#调整顺序并对行命名
+Taxa_pp_c_filter <- order_taxa(Taxa_pp_c_filter,refseq_pp_c_filter)
+rownames(Taxa_pp_c_filter) <- rownames(refseq_pp_c_filter)
+Taxa_pp_c_filter <- renames(Taxa_pp_c_filter)
+
+#提取相对丰度
+tss_pp_c <- normalize(res_pp_c, "TSS")
+
+Asv_pp_c_tss <- as.data.frame(tss_pp_c@otu_table)
+  
+marker_pp_c <- as.data.frame(tss_pp_c@otu_table[rownames(refseq_pp_c_filter)])
+
+marker_pp_c <- marker_pp_c[,order(colnames(marker_pp_c),decreasing = FALSE)]
+for (i in 1:nrow(marker_pp_c)) {
+  rownames(marker_pp_c)[i]<- Taxa_pp_c_filter[rownames(marker_pp_c)[i],"Taxon"]
+}
+
+
+
+
+
+res_ast <- import_qiime2('C:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/filtered-table.qza',taxa_qza = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/taxonomy.qza',
+                     sam_tab = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-11/metadata_20230922.txt')
+#TSS标准化
+tss_res_ast <- normalize(res_ast, "TSS")
+
+refseq_pp_c_ast <- as.data.frame(tss_res_ast @refseq)
+
+#依据差异ASVs提取AST-PP-C组相应ASVs-id
+
+refseq_pp_c_ast_filter  <- subset(refseq_pp_c_ast, x %in% refseq_pp_c_filter$x)
+
+#提取ASVs对应taxanomy
+Taxa_pp_c_ast_filter <- Taxa_pp_c_all[Taxa_pp_c_all$Feature.ID %in% refseq_pp_c_ast_filter$x,,drop = FALSE]
+
+#调整顺序并对行命名
+Taxa_pp_c_ast_filter <- order_taxa(Taxa_pp_c_ast_filter,refseq_pp_c_ast_filter)
+rownames(Taxa_pp_c_ast_filter) <- rownames(refseq_pp_c_ast_filter)
+Taxa_pp_c_ast_filter <- renames(Taxa_pp_c_ast_filter)
+
+
+#提取相对丰度
+otu <- as.data.frame(tss_res_ast@otu_table)
+
+marker_pp_c_ast <- otu[rownames(refseq_pp_c_ast_filter),]
+
+marker_pp_c_ast <- marker_pp_c_ast[,order(colnames(marker_pp_c_ast),decreasing = FALSE)]
+
+for (i in 1:nrow(marker_pp_c_ast)) {
+  rownames(marker_pp_c_ast)[i]<- Taxa_pp_c_ast_filter[rownames(marker_pp_c_ast)[i],"Taxon"]
+}
+marker_pp_c_ast <- marker_pp_c_ast[rownames(marker_pp_c),]
+marker_pp_c_ast <- marker_pp_c_ast[,c(3:14,1:2)]
+
+
+```
+
+
+```{r}
+#C_PP and C_PP_FMT
+
+#提取差异ASV特征序列
+res_C_PP_FMT <- res <- import_qiime2('C:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/filtered-sample-table.qza',taxa_qza = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/taxonomy.qza',
+                     sam_tab = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/metadata_20231122.tsv')
+
+result_C_PP_FMT <- run_ancom(
+  res_C_PP_FMT,
+  group="group",
+  taxa_rank = "none",
+  p_adjust =  "BH",
+  pvalue_cutoff = 0.05,
+  norm = "none",
+)
+
+#提取ASVid
+Asv_pp_c_fmt <- result_C_PP_FMT@marker_table
+
+Asv_pp_c_fmt <- Asv_pp_c_fmt[order(Asv_pp_c_fmt$enrich_group, -Asv_pp_c_fmt$W), ]
+
+#TSS标准化
+
+tss_res_C_PP_FMT <- normalize(res_C_PP_FMT, "TSS")
+
+Asv_c_pp_fmt_tss <- as.data.frame(tss_res_C_PP_FMT@otu_table)
+
+refseq_res_C_PP_FMT <- as.data.frame(tss_res_C_PP_FMT@refseq)
+
+#提取差异ASVs
+
+refseq_res_C_PP_FMT_filter <- refseq_res_C_PP_FMT[Asv_pp_c_fmt$feature,,drop = FALSE]
+
+#差异ASV对应taxa
+
+Taxa_C_PP_FMT_all <- read.table("c:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/taxonomy.tsv",header=T, sep="\t")
+
+Taxa_C_PP_FMT_filter <- Taxa_C_PP_FMT_all[Taxa_C_PP_FMT_all$Feature.ID %in%refseq_res_C_PP_FMT_filter$x,,drop = FALSE]
+
+#调整顺序并对行命名
+Taxa_C_PP_FMT_filter <- order_taxa(Taxa_C_PP_FMT_filter,refseq_res_C_PP_FMT_filter)
+rownames(Taxa_C_PP_FMT_filter) <- rownames(refseq_res_C_PP_FMT_filter)
+Taxa_C_PP_FMT_filter <- renames(Taxa_C_PP_FMT_filter)
+
+#提取相对丰度
+marker_pp_c_fmt <- as.data.frame(tss_res_C_PP_FMT @otu_table[rownames(refseq_res_C_PP_FMT_filter)])
+
+marker_pp_c_fmt <- marker_pp_c_fmt[,order(colnames(marker_pp_c_fmt),decreasing = FALSE)]
+marker_pp_c_fmt <- marker_pp_c_fmt[,c(13:18, 1:12)]
+
+for (i in 1:nrow(marker_pp_c_fmt)) {
+  rownames(marker_pp_c_fmt)[i]<- Taxa_C_PP_FMT_filter[rownames(marker_pp_c_fmt)[i],"Taxon"]
+}
+
+
+
+
+
+
+
+
+
+
+#pp-c(no fmt)
+#ASVs 并集
+# Merge the data frames
+Asv_all <- union(refseq_pp_c_filter$x, refseq_res_C_PP_FMT_filter$x)
+
+
+#提取对应丰度表
+Asv_pp_c_tss$seq <- refseq_pp_c$x
+
+Asv_c_pp_fmt_tss$seq <- refseq_res_C_PP_FMT$x
+
+Asv_all_tss <- merge(Asv_c_pp_fmt_tss,Asv_pp_c_tss,"seq",all = TRUE)
+
+Asv_all_tss$taxa.x <- Taxa_pp_c_all$Taxon[match(Asv_all_tss$seq, Taxa_pp_c_all$Feature.ID)]
+Asv_all_tss$taxa.y <- Taxa_C_PP_FMT_all$Taxon[match(Asv_all_tss$seq, Taxa_C_PP_FMT_all$Feature.ID)]
+
+na_indices <- is.na(Asv_all_tss[, 33])
+Asv_all_tss[na_indices, 33] <- Asv_all_tss[na_indices, 32]
+
+na_indices <- is.na(Asv_all_tss[, 32])
+Asv_all_tss[na_indices, 32] <- Asv_all_tss[na_indices, 33]
+
+Asv_all_tss <- Asv_all_tss[,-33]
+colnames(Asv_all_tss)[32] <- "Taxon"
+
+Asv_all_tss$Asv_id <- rownames(Asv_all_tss)
+  
+new_taxa <- Asv_all_tss[,c(1,32,33)]
+
+
+#提取差异ASVs
+Asv_all_tss_filter <- subset(Asv_all_tss,seq %in% Asv_all)
+
+Asv_all_tss_filter[is.na(Asv_all_tss_filter)] <- 0
+
+rownames(Asv_all_tss_filter) <- Asv_all_tss_filter$Asv_id
+
+Asv_all_tss_filter <-renames(Asv_all_tss_filter)
+
+rownames(Asv_all_tss_filter) <- Asv_all_tss_filter$Taxon
+
+Asv_all_tss_filter <- Asv_all_tss_filter[match(Asv_all,Asv_all_tss_filter$seq),]
+
+
+marker_all <- Asv_all_tss_filter[,c(2:31)]
+
+marker_all <- marker_all[,order(colnames(marker_all))]
+
+marker_all <- marker_all[,c(19:30,13:18,1:12)]
+ 
+annotation_col_cpp <-  data.frame(Group = factor(rep(c("C", "PP"), each = 6)))
+rownames(annotation_col_cpp) = colnames(marker_pp_c_asv)
+annotation_col_fmt <- data.frame(Group = factor(rep(c("C-FMT", "10uMPP-FMT","15uMPP-FMT"), each = 6)))
+annotation_col_fmt$Group <- factor(annotation_col_fmt$Group, levels = c("C-FMT", "10uMPP-FMT", "15uMPP-FMT"))
+rownames(annotation_col_fmt) = colnames(marker_pp_c_fmt_asv)
+annotation_all <- merge(annotation_col_cpp,annotation_col_fmt,all =T,sort = F)
+rownames(annotation_all) <- c(rownames(annotation_col_cpp),rownames(annotation_col_fmt))
+
+
+#readjust p1 name
+new_taxa_pp_c <- subset(new_taxa,seq %in% refseq_pp_c_filter$x)
+
+
+  
+marker_pp_c <- as.data.frame(tss_pp_c@otu_table[rownames(refseq_pp_c_filter)])
+
+marker_pp_c$seq <- refseq_pp_c_filter$x
+marker_pp_c$Taxon <- new_taxa_pp_c$Taxon[match(marker_pp_c$seq,new_taxa_pp_c$seq)]
+marker_pp_c$Asv_id <-new_taxa_pp_c$Asv_id[match(marker_pp_c$seq,new_taxa_pp_c$seq)]
+rownames(marker_pp_c) <- marker_pp_c$Asv_id
+marker_pp_c <- renames(marker_pp_c)
+rownames(marker_pp_c) <- marker_pp_c$Taxon
+
+marker_pp_c_asv <- marker_pp_c[,1:12]
+marker_pp_c_asv <- marker_pp_c[,order(colnames(marker_pp_c_asv),decreasing = FALSE)]
+
+taxa <- rownames(marker_pp_c_asv)
+taxa <- gsub("k__Bacteria; ", "", taxa)
+
+# 设置原始字符串
+original_string <- taxa
+# 将原始字符串按分号分割
+split_strings <- str_split(original_string, "; ")
+split_strings
+
+
+max_stringlen <- 0
+for (i in 1:length(split_strings)) {
+  if (length(split_strings[[i]]) > max_stringlen) {
+    max_stringlen <- length(split_strings[[i]])
+  }
+}
+max_stringlen
+
+for (i  in 1:(max_stringlen)) {
+  temp_str <- c()
+    for (j in 1:length(split_strings)) {
+      if ( is.na(split_strings[[j]][i])) {
+        split_strings[[j]][i] <- " "
+      }
+       temp_str <- append(temp_str,split_strings[[j]][i])
+    }
+  max_length <- max(nchar(temp_str))
+  for (j in 1:length(split_strings)) {
+    if ( !is.na(split_strings[[j]][i])) {
+       split_strings[[j]][i] <- str_pad(split_strings[[j]][i], width = max_length, side = "right")
+    }
+     
+    }
+}
+split_strings <- sapply(split_strings, function(x) paste(x, collapse = "; "))
+split_strings 
+
+rownames(marker_pp_c_asv) <- split_strings
+
+#rejust ylabs
+
+
+
+
+p1 <- Heatmap(
+    marker_pp_c_asv,
+    name = "relative abundance",
+    row_names_side = "left", column_names_side = "bottom",
+    row_names_gp = gpar(fontsize = 20, fontfamily = "Consolas"),
+    row_names_max_width = max_text_width(
+        rownames(marker_pp_c_asv)
+    ),
+    column_names_gp = gpar(fontsize = 20, fontfamily = "Consolas"),
+    column_names_rot = 45,  
+    cluster_rows = FALSE,
+    cluster_columns = FALSE,
+)
+
+
+
+#p2
+rownames(marker_pp_c_ast) <- rownames(marker_pp_c)
+
+
+p2 <- pheatmap(
+  marker_pp_c_ast,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  angle_col = 45,  
+  width = 10,height = 8,
+  font.family = "Arial"
+)
+
+
+#p3
+new_taxa_pp_c_fmt<- subset(new_taxa,seq %in% refseq_res_C_PP_FMT_filter$x)
+
+marker_pp_c_fmt <- as.data.frame(tss_res_C_PP_FMT@otu_table[rownames(refseq_res_C_PP_FMT_filter),])
+
+marker_pp_c_fmt$seq <- refseq_res_C_PP_FMT_filter$x
+
+marker_pp_c_fmt$Taxon <- new_taxa_pp_c_fmt$Taxon[match(marker_pp_c_fmt$seq,new_taxa_pp_c_fmt$seq)]
+marker_pp_c_fmt$Asv_id <-new_taxa_pp_c_fmt$Asv_id[match(marker_pp_c_fmt$seq,new_taxa_pp_c_fmt$seq)]
+
+rownames(marker_pp_c_fmt) <- marker_pp_c_fmt$Asv_id
+
+marker_pp_c_fmt <- renames(marker_pp_c_fmt)
+rownames(marker_pp_c_fmt) <- marker_pp_c_fmt$Taxon
+
+marker_pp_c_fmt_asv <- marker_pp_c_fmt[,c(1:18)]
+
+marker_pp_c_fmt_asv <- marker_pp_c_fmt_asv[,order(colnames(marker_pp_c_fmt_asv),decreasing = FALSE)]
+marker_pp_c_fmt_asv <- marker_pp_c_fmt_asv[,c(13:18, 1:12)]
+
+taxa <- rownames(marker_pp_c_fmt_asv)
+taxa <- gsub("k__Bacteria; ", "", taxa)
+
+# 设置原始字符串
+original_string <- taxa
+# 将原始字符串按分号分割
+split_strings <- str_split(original_string, "; ")
+split_strings
+
+max_stringlen <- 0
+for (i in 1:length(split_strings)) {
+  if (length(split_strings[[i]]) > max_stringlen) {
+    max_stringlen <- length(split_strings[[i]])
+  }
+}
+max_stringlen
+
+for (i  in 1:(max_stringlen)) {
+  temp_str <- c()
+    for (j in 1:length(split_strings)) {
+      if ( is.na(split_strings[[j]][i])) {
+        split_strings[[j]][i] <- " "
+      }
+       temp_str <- append(temp_str,split_strings[[j]][i])
+    }
+  max_length <- max(nchar(temp_str))
+  for (j in 1:length(split_strings)) {
+    if ( !is.na(split_strings[[j]][i])) {
+       split_strings[[j]][i] <- str_pad(split_strings[[j]][i], width = max_length, side = "right")
+    }
+     
+    }
+}
+
+split_strings 
+split_strings <- sapply(split_strings, function(x) paste(x, collapse = "; "))
+split_strings 
+
+
+rownames(marker_pp_c_fmt_asv) <- split_strings
+p3 <- pheatmap(
+  marker_pp_c_fmt_asv,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = F,
+  angle_col = 45,  
+  width = 10,height = 8,
+  fontsize=15,
+)
+pp <- p3$gtable
+pp$grobs[[2]]$label
+pp$grobs[[2]]$gp = grid::gpar(fontsize=12 ,fontfamily = "Consolas")
+pp$grobs[[3]]$label
+pp$grobs[[3]]$gp = grid::gpar(fontsize=12 ,fontfamily = "Consolas")
+plot(pp)
+#p4
+
+taxa <- rownames(marker_all)
+taxa <- gsub("k__Bacteria; ", "", taxa)
+
+# 设置原始字符串
+original_string <- taxa
+# 将原始字符串按分号分割
+split_strings <- str_split(original_string, "; ")
+split_strings
+
+max_stringlen <- 0
+for (i in 1:length(split_strings)) {
+  if (length(split_strings[[i]]) > max_stringlen) {
+    max_stringlen <- length(split_strings[[i]])
+  }
+}
+max_stringlen
+
+for (i  in 1:(max_stringlen)) {
+  temp_str <- c()
+    for (j in 1:length(split_strings)) {
+      if ( is.na(split_strings[[j]][i])) {
+        split_strings[[j]][i] <- " "
+      }
+       temp_str <- append(temp_str,split_strings[[j]][i])
+    }
+  max_length <- max(nchar(temp_str))
+  for (j in 1:length(split_strings)) {
+    if ( !is.na(split_strings[[j]][i])) {
+       split_strings[[j]][i] <- str_pad(split_strings[[j]][i], width = max_length, side = "right")
+    }
+     
+    }
+}
+split_strings 
+split_strings <- sapply(split_strings, function(x) paste(x, collapse = "; "))
+split_strings 
+
+
+rownames(marker_all) <- split_strings
+
+p4 <- pheatmap(
+  marker_all,
+  border = "white",
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  angle_col = 45,  
+  width = 10, height = 8,
+  fontsize=15
+)
+pp <- p4$gtable
+pp$grobs[[3]]$label
+pp$grobs[[3]]$gp = grid::gpar(fontsize=12 ,fontfamily = "Consolas")
+pp$grobs[[2]]$gp = grid::gpar(fontsize=12 ,fontfamily = "Consolas")
+plot(pp)
+
+png("heatmap.png", width = 15, height = 8, units = 'in', res = 300)
+plot(pp)
+dev.off()
+
+```

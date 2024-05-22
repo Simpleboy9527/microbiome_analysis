@@ -1,0 +1,335 @@
+---
+title: "hy"
+author: "xh"
+date: "2023-12-26"
+output: html_document
+---
+
+```{r}
+#C_PP_AST
+setwd("C:/Users/16236/Desktop/temp/qiime_temp/")
+library(dplyr)
+library(microbiomeMarker)
+library(RColorBrewer)
+library(gtable)
+library(grid)
+library(ggplot2)
+library(stringr)
+library(ComplexHeatmap)
+library(extrafont)
+library(circlize)
+
+
+res_pp_c <- import_qiime2('C:/Users/16236/Desktop/temp/qiime_temp/raref-filtered-table.qza',taxa_qza = 'C:/Users/16236/Desktop/temp/qiime_temp/taxonomy.qza',
+                     sam_tab = 'C:/Users/16236/Desktop/temp/qiime_temp/metadata_20230922.txt')
+
+
+result_pp_c <- run_ancom(
+  res_pp_c,
+  group="group",
+  taxa_rank = "none",
+  p_adjust =  "BH",
+  pvalue_cutoff = 0.05, 
+)
+
+res_pp_c <- normalize(res_pp_c, "TSS")
+result_table <- data.frame(result_pp_c@marker_table)
+pp_corder <- result_table[order(result_table$enrich_group, -result_table$ef_CLR_diff_mean),,drop = F]
+pp_corder
+taxatable_cpp <- as.data.frame(res_pp_c@tax_table)
+taxatable_cpp$feature <- rownames(taxatable_cpp)
+taxatable_cpp
+otutable <- as.data.frame(res_pp_c@otu_table)
+otutable$feature <- rownames(otutable)
+otutable
+merged_data <- merge(pp_corder, taxatable_cpp, by = "feature")
+merged_data <- merge(merged_data, otutable, by = "feature")
+merged_data
+
+merged_data$Kingdom <- ifelse(!is.na(merged_data$Kingdom), paste0("k_", merged_data$Kingdom), NA)
+merged_data$Phylum <- ifelse(!is.na(merged_data$Phylum), paste0("p_", merged_data$Phylum), NA)
+merged_data$Class <- ifelse(!is.na(merged_data$Class), paste0("c_", merged_data$Class), NA)
+merged_data$Order <- ifelse(!is.na(merged_data$Order), paste0("o_", merged_data$Order), NA)
+merged_data$Family <- ifelse(!is.na(merged_data$Family), paste0("f_", merged_data$Family), NA)
+merged_data$Genus <- ifelse(!is.na(merged_data$Genus), paste0("g_", merged_data$Genus), NA)
+merged_data$Species <- ifelse(!is.na(merged_data$Species), paste0("s_", merged_data$Species), NA)
+merged_data
+
+max_lengths <- sapply(merged_data[,5:11], function(x) max(nchar(as.character(x)), na.rm = TRUE))
+
+for (col in names(merged_data[, 5:11])) {
+  if (is.character(merged_data[[col]])) {
+    # Replace NA with an empty string before padding
+    merged_data[[col]][is.na(merged_data[[col]])] <- ""
+    
+    
+    # Pad the strings
+    merged_data[[col]] <- str_pad(merged_data[[col]], width = max_lengths[col], side = "right")
+  }
+}
+
+merged_data$taxa <- do.call(paste, c(merged_data[6:11], sep = "; "))
+merged_data <- merged_data[order(merged_data$enrich_group, -merged_data$ef_CLR_diff_mean),,drop = F]
+
+merged_data
+merged_data <- merged_data[,12:24]
+
+merged_data <- merged_data[,order(colnames(merged_data),decreasing = FALSE)]
+merged_data
+
+mapdata_cpp <- as.matrix(merged_data[1:12])
+rownames(mapdata_cpp) <- merged_data$taxa 
+
+max_width <- max_text_width(rownames(mapdata_cpp))
+
+
+mapdata_cpp <- t(scale(t(mapdata_cpp)))
+
+
+col = colorRamp2(c(-2, 0, 3), c("blue", "white", "red"))
+
+
+p1 <- Heatmap(
+  mapdata_cpp,
+  name = "Relative Abundance",
+  column_names_side = "bottom",
+  col = col,
+  border = FALSE,
+  row_names_side = "left",
+  row_names_max_width = unit(24, "cm"), 
+  row_names_gp = gpar(fontsize = 15, fontfamily = "Consolas"),  
+  column_names_gp = gpar(fontsize = 15, fontfamily = "Consolas"),
+  column_names_rot = 45,
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  heatmap_width = unit(0.05, "npc"),  # 将热图宽度改为相对单位
+  width = unit(20, "cm"),  # 保持整个图宽度为绝对单位
+   heatmap_legend_param = list(
+    title_gp = gpar(fontsize = 15, fontfamily = "Consolas"),  # 图例标题字体
+    labels_gp = gpar(fontsize = 15, fontfamily = "Consolas"),
+    legend_height = unit(0.6, "npc"),
+    title_position = "leftcenter-rot")  # 图例标签字体
+)
+
+draw(p1)
+
+
+
+res_C_PP_FMT <- import_qiime2('C:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/filtered-sample-table.qza',taxa_qza = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/taxonomy.qza',
+                     sam_tab = 'c:/Users/16236/Desktop/qiime_view/hy/hy-2023-1217/metadata_20231122.tsv')
+
+result_C_PP_FMT <- run_ancom(
+  res_C_PP_FMT,
+  group="group",
+  taxa_rank = "none",
+  p_adjust =  "BH",
+  pvalue_cutoff = 0.05
+)
+
+
+res_pp_c_fmt <- normalize(res_C_PP_FMT, "TSS")
+result_table <- data.frame(result_C_PP_FMT@marker_table)
+pp_corder <- result_table[order(result_table$enrich_group, -result_table$ef_CLR_F_statistic),,drop = F]
+pp_corder
+taxatable_fmt <- as.data.frame(res_pp_c_fmt@tax_table)
+taxatable_fmt$feature <- rownames(taxatable_fmt)
+taxatable_fmt
+otutable <- as.data.frame(res_pp_c_fmt@otu_table)
+otutable$feature <- rownames(otutable)
+otutable
+
+merged_data <- merge(pp_corder, taxatable_fmt , by = "feature")
+merged_data <- merge(merged_data, otutable, by = "feature")
+merged_data
+
+merged_data$Kingdom <- ifelse(!is.na(merged_data$Kingdom), paste0("k_", merged_data$Kingdom), NA)
+merged_data$Phylum <- ifelse(!is.na(merged_data$Phylum), paste0("p_", merged_data$Phylum), NA)
+merged_data$Class <- ifelse(!is.na(merged_data$Class), paste0("c_", merged_data$Class), NA)
+merged_data$Order <- ifelse(!is.na(merged_data$Order), paste0("o_", merged_data$Order), NA)
+merged_data$Family <- ifelse(!is.na(merged_data$Family), paste0("f_", merged_data$Family), NA)
+merged_data$Genus <- ifelse(!is.na(merged_data$Genus), paste0("g_", merged_data$Genus), NA)
+merged_data$Species <- ifelse(!is.na(merged_data$Species), paste0("s_", merged_data$Species), NA)
+merged_data
+
+
+
+max_lengths <- sapply(merged_data[,5:11], function(x) max(nchar(as.character(x)), na.rm = TRUE))
+
+for (col in names(merged_data[, 5:11])) {
+  if (is.character(merged_data[[col]])) {
+    # Replace NA with an empty string before padding
+    merged_data[[col]][is.na(merged_data[[col]])] <- ""
+    # Pad the strings
+    merged_data[[col]] <- str_pad(merged_data[[col]], width = max_lengths[col], side = "right",pad = " ")
+  }
+}
+
+merged_data$taxa <- do.call(paste, c(merged_data[6:11], sep = "; "))
+merged_data <- merged_data[order(merged_data$enrich_group, -merged_data$ef_CLR_F_statistic),,drop = F]
+merged_data
+merged_data <- merged_data[,12:30]
+
+merged_data <- merged_data[,order(colnames(merged_data),decreasing = FALSE)]
+merged_data <- merged_data[,c(13:18, 1:12,19)]
+
+mapdata_fmt <- as.matrix(merged_data[1:18])
+rownames(mapdata_fmt) <- merged_data$taxa 
+mapdata_fmt
+
+
+
+max_width <- max_text_width(rownames(mapdata_fmt))
+
+
+
+mapdata_fmt <- t(scale(t(mapdata_fmt)))
+
+range(mapdata_fmt)
+
+
+col = colorRamp2(c(-4, 0, 4), c("blue", "white", "red"))
+
+
+
+p2 <- Heatmap(
+  mapdata_fmt,
+  name = "Relative Abundance",
+  column_names_side = "bottom",
+  col = col,
+  border = FALSE,
+  row_names_side = "left",
+  row_names_max_width = unit(24, "cm"), 
+  row_names_gp = gpar(fontsize = 15, fontfamily = "Consolas"),  
+  column_names_gp = gpar(fontsize = 15, fontfamily = "Consolas"),
+  column_names_rot = 45,
+  cluster_rows = T,
+  show_row_dend = FALSE,
+  cluster_columns = FALSE,
+  heatmap_width = unit(12, "cm"),  # 整图
+  width = unit(0.01, "npc"),  # 热图
+  height = unit(0.7, "npc"),
+   heatmap_legend_param = list(
+    title_gp = gpar(fontsize = 15, fontfamily = "Consolas"),  # 图例标题字体
+    labels_gp = gpar(fontsize = 15, fontfamily = "Consolas"),
+    legend_height = unit(0.5, "npc"),
+    title_position = "leftcenter-rot")  # 图例标签字体
+)
+
+draw(p2)
+```
+``` {r}
+
+refseq_pp_c_filter <- as.data.frame(res_pp_c@refseq)[result_pp_c@marker_table[["feature"]],,drop = FALSE]
+
+
+refseq_res_C_PP_FMT_filter <- as.data.frame(res_pp_c_fmt@refseq)[result_C_PP_FMT@marker_table[["feature"]],,drop = FALSE]
+
+Asv_all <- union(refseq_pp_c_filter$x, refseq_res_C_PP_FMT_filter$x)
+
+
+#提取对应丰度表
+otutable_cpp <- as.data.frame(res_pp_c@otu_table)
+otutable_cpp$seq <- res_pp_c@refseq
+otutable_cpp <- otutable_cpp[as.character(otutable_cpp$seq) %in% Asv_all,]
+
+otutable_fmt <- as.data.frame(res_pp_c_fmt@otu_table)
+otutable_fmt$seq <- res_pp_c_fmt@refseq
+otutable_fmt <- otutable_fmt[as.character(otutable_fmt$seq) %in% Asv_all,]
+
+#taxon
+otutable_cpp$feature <- rownames(otutable_cpp)
+otutable_fmt$feature <- rownames(otutable_fmt)
+
+temp_merge_cpp <- merge(otutable_cpp,taxatable_cpp,by = "feature")
+temp_merge_fmt <- merge(otutable_fmt,taxatable_fmt,by = "feature")
+
+temp_merge_cpp$seq <- as.character(temp_merge_cpp$seq)
+temp_merge_fmt$seq <- as.character(temp_merge_fmt$seq)
+
+result_all <- merge(temp_merge_fmt,temp_merge_cpp,by = "seq",all = T)
+
+result_all$Kingdom.x <- ifelse(!is.na(result_all$Kingdom.x), paste0("k_", result_all$Kingdom.x), NA)
+result_all$Phylum.x <- ifelse(!is.na(result_all$Phylum.x), paste0("p_", result_all$Phylum.x), NA)
+result_all$Class.x <- ifelse(!is.na(result_all$Class.x), paste0("c_", result_all$Class.x), NA)
+result_all$Order.x <- ifelse(!is.na(result_all$Order.x), paste0("o_", result_all$Order.x), NA)
+result_all$Family.x <- ifelse(!is.na(result_all$Family.x), paste0("f_", result_all$Family.x), NA)
+result_all$Genus.x <- ifelse(!is.na(result_all$Genus.x), paste0("g_", result_all$Genus.x), NA)
+result_all$Species.x <- ifelse(!is.na(result_all$Species.x), paste0("s_", result_all$Species.x), NA)
+result_all
+
+
+
+
+
+result_all$Kingdom.y <- ifelse(!is.na(result_all$Kingdom.y), paste0("k_", result_all$Kingdom.y), NA)
+result_all$Phylum.y <- ifelse(!is.na(result_all$Phylum.y), paste0("p_", result_all$Phylum.y), NA)
+result_all$Class.y <- ifelse(!is.na(result_all$Class.y), paste0("c_", result_all$Class.y), NA)
+result_all$Order.y <- ifelse(!is.na(result_all$Order.y), paste0("o_", result_all$Order.y), NA)
+result_all$Family.y <- ifelse(!is.na(result_all$Family.y), paste0("f_", result_all$Family.y), NA)
+result_all$Genus.y <- ifelse(!is.na(result_all$Genus.y), paste0("g_", result_all$Genus.y), NA)
+result_all$Species.y <- ifelse(!is.na(result_all$Species.y), paste0("s_", result_all$Species.y), NA)
+result_all
+
+ result_all[,21:27][is.na(result_all[,21:27])] <- result_all[,41:47][is.na(result_all[,21:27])]
+ 
+max_lengths <- sapply(result_all[,21:27], function(x) max(nchar(as.character(x)), na.rm = TRUE))
+
+for (col in names(result_all[, 21:27])) {
+  if (is.character(result_all[[col]])) {
+    # Replace NA with an empty string before padding
+    result_all[[col]][is.na(result_all[[col]])] <- ""
+    # Pad the strings
+    result_all[[col]] <- str_pad(result_all[[col]], width = max_lengths[col], side = "right", pad = " ")
+  }
+}
+
+
+result_all$taxa <- do.call(paste, c(result_all[22:27], sep = "; "))
+
+result_all <- result_all[,order(colnames(result_all))]
+
+result_all <- result_all[,c(1:24,39:44,48)]
+
+result_all[is.na(result_all)] <- 0
+
+result_all <- result_all[,c(19:30,13:18,1:12,31)]
+
+
+mapdata <- as.matrix(result_all[1:30])
+rownames(mapdata) <- result_all$taxa 
+mapdata
+
+max_width <- max_text_width(rownames(mapdata))
+
+
+range(mapdata)
+
+col = colorRamp2(c(0, 0.25, 0.5), c("blue", "white", "red"))
+
+
+p3 <- Heatmap(
+  mapdata,
+  name = "Relative Abundance",
+  column_names_side = "bottom",
+  col = col,
+  border = FALSE,
+  row_names_side = "left",
+  row_names_max_width = unit(24, "cm"), 
+  row_names_gp = gpar(fontsize = 15, fontfamily = "Consolas"),  
+  column_names_gp = gpar(fontsize = 15, fontfamily = "Consolas"),
+  column_names_rot = 45,
+  cluster_rows = TRUE,
+  cluster_columns = FALSE,
+  show_row_dend = FALSE, 
+  heatmap_width = unit(18, "cm"),  # 整图
+  width = unit(0.05, "npc"),  # 热图
+  height = unit(0.7, "npc"),
+   heatmap_legend_param = list(
+    title_gp = gpar(fontsize = 15, fontfamily = "Consolas"),  # 图例标题字体
+    labels_gp = gpar(fontsize = 15, fontfamily = "Consolas"),
+    legend_height = unit(0.5, "npc"),
+    title_position = "leftcenter-rot")  # 图例标签字体
+)
+
+draw(p3)
+```

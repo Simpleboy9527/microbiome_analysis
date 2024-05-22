@@ -1,0 +1,117 @@
+#!/bin/bash
+
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -p cu
+#SBATCH -w cu03
+#SBATCH -o job.%j.stdout
+#SBATCH -e job.%j.stderr
+#SBATCH --mem=20G 
+#SBATCH --cpus-per-task=28
+#SBATCH -J myjob   （#名字）
+
+module load miniconda/4.9.2
+source activate
+conda activate qiime2-2022.2
+
+#生成manifest
+#echo -e sample-id'\t'absolute-filepath > manifest
+#for i in /home/raw-data/songying/01.CleanData/*fastq; do path=$(readlink -f $i); id=$(basename $i | cut -d '.' -f 1); echo -e $id'\t'$path >>manifest;done
+
+
+#qiime tools import \
+#  --type 'SampleData[SequencesWithQuality]' \
+#  --input-path manifest \
+#  --output-path demux.qza \
+#  --input-format SingleEndFastqManifestPhred33V2
+
+#qiime demux summarize \
+#  --i-data demux.qza \
+#  --o-visualization demux.qzv
+
+
+#qiime quality-filter q-score \
+#  --i-demux demux.qza \
+#  --o-filtered-sequences demux-filtered.qza \
+#  --o-filter-stats demux-filter-stats.qza
+
+#qiime metadata tabulate \
+#  --m-input-file demux-filter-stats.qza \
+#  --o-visualization demux-filter-stats.qzv
+
+#qiime demux summarize \
+#  --i-data demux-filtered.qza \
+#  --o-visualization demux-filtered.qzv
+
+#qiime deblur denoise-16S \
+#  --i-demultiplexed-seqs demux-filtered.qza \
+#  --p-trim-length 151 \
+#  --p-jobs-to-start 4 \
+#  --p-no-hashed-feature-ids \ （#让特征以序列的形式表现出来而不是以特征id的形式）
+#  --o-representative-sequences rep-seqs-deblur.qza \
+#  --o-table table-deblur.qza \
+#  --p-sample-stats \
+#  --o-stats deblur-stats.qza
+
+#qiime deblur visualize-stats \
+#  --i-deblur-stats deblur-stats.qza \
+#  --o-visualization deblur-stats.qzv
+
+#mv rep-seqs-deblur.qza rep-seqs.qza
+#mv table-deblur.qza table.qza
+
+#qiime feature-table summarize \
+#  --i-table table.qza \
+#  --o-visualization table.qzv \
+
+#qiime feature-table tabulate-seqs \
+#  --i-data rep-seqs.qza \
+#  --o-visualization rep-seqs.qzv
+
+
+#qiime phylogeny align-to-tree-mafft-fasttree \
+#  --i-sequences rep-seqs.qza \
+#  --o-alignment aligned-rep-seqs.qza \
+#  --p-n-threads 28 \
+#  --o-masked-alignment masked-aligned-rep-seqs.qza \
+#  --o-tree unrooted-tree.qza \
+#  --o-rooted-tree rooted-tree.qza
+
+#qiime diversity alpha-rarefaction \
+#  --i-table table.qza \
+#  --i-phylogeny rooted-tree.qza \
+#  --p-steps 15 \
+#  --p-max-depth 50000 \
+#  --o-visualization alpha-rarefaction-50000.qzv
+
+qiime diversity core-metrics-phylogenetic \
+  --i-phylogeny rooted-tree.qza \
+  --i-table table.qza \
+  --p-sampling-depth 43211 \ #结合feature count表和a稀疏图看
+  --m-metadata-file metadata.tsv \    #(metadata一般为制表符格式的文本文件，且第一列为sample-id或feature-id，值唯一，unicode编码)
+  --output-dir core-metrics-results
+
+#faith_pd指数的显著性检验
+qiime diversity alpha-group-significance 
+--i-alpha-diversity core-metrics-results/faith_pd_vector.qza 
+--m-metadata-file metadata.tsv 
+--o-visualization core-metrics-results/faith-pd-group-significance.qzv
+
+
+
+#qiime feature-classifier classify-sklearn \
+#  --i-classifier /beegfs/songying/2022_QUCHI/gg-13-8-99-nb-classifier.qza \  （#基于16s全长的分类器，可以在qiime2的resoure里下载）
+#  --i-reads rep-seqs.qza \
+   --p-n-jobs 28 \
+#  --o-classification taxonomy.qza
+
+#qiime metadata tabulate \
+#  --m-input-file taxonomy.qza \
+#  --o-visualization taxonomy.qzv
+
+#qiime taxa barplot \
+#  --i-table table.qza \
+#  --i-taxonomy taxonomy.qza \
+#  --m-metadata-file metadata.tsv \
+#  --o-visualization taxa-bar-plots.qzv
+

@@ -1,0 +1,41 @@
+module load miniconda/4.9.2
+source activate
+conda activate mpa4
+
+metaphlan ../data_exam/SRS014476-Supragingival_plaque.fasta.gz --input_type fasta > SRS014476-Supragingival_plaque_profile.txt
+
+
+metaphlan \
+    ../data_exam/SRS014476-Supragingival_plaque.fasta.gz \
+    --nproc 30 --input_type fastq \
+    -o ./00_metaphlan4/result/SRS014476-Supragingival_plaque.txt \
+    --bowtie2db /home/software/anaconda3/envs/mpa4/lib/python3.10/site-packages/metaphlan/metaphlan_databases/ \
+    --index mpa_vJan21_CHOCOPhlAnSGB_202103 \
+    --bowtie2out ./00_metaphlan4/result/SRS014476-Supragingival_plaque.bz2
+
+
+
+
+#StrainPhlAn4
+
+
+
+for f in /home/xuhuan/metagenome/StrainPhlAn/test/samples_fastq/*.bz2
+do
+    echo "Running MetaPhlAn on ${f}"
+    bn=$(basename ${f%fastq.bz2})
+    metaphlan ${f} --input_type fastq -s sams/${bn}.sam.bz2 --bowtie2out bowtie2/${bn}.bowtie2.bz2 -o profiles/${bn}_profiled.tsv --index mpa_vJan21_CHOCOPhlAnSGB_202103 --bowtie2db /home/software/anaconda3/envs/mpa4/lib/python3.10/site-packages/metaphlan/metaphlan_databases/ --nproc 30
+done
+
+
+nohup sample2markers.py -i sams/*.sam.bz2 -o consensus_markers -n 8 &
+
+strainphlan -s consensus_markers/*.pkl -m db_markers/s__Eubacterium_rectale.fna -r reference_genomes/*.fna.bz2 -o output -c s__Eubacterium_rectale --phylophlan_mode fast --nproc 4
+
+Visualize the results with GraPhlAn
+add_metadata_tree.py --ifn_trees RAxML_bestTree.t__SGB4933_group.StrainPhlAn4.tre --ifn_metadata ../metadata.txt
+
+plot_tree_graphlan.py --ifn_tree RAxML_bestTree.t__SGB4933_group.StrainPhlAn4.tre.metadata -m Country
+
+
+awk -F'\t' 'NR > 1 { system("wget http://cmprod1.cibio.unitn.it/biobakery4/biobakery_strainphlan4/fastq/" $1 ".fastq.bz2") }' metadata.txt
